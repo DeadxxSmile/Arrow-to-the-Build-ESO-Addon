@@ -1,84 +1,74 @@
-# Alpha testing checklist
+# Addon 1.0.0 test checklist
 
-## Installation
+Use this checklist when validating an addon change independently or as part of an ATTB desktop release.
 
-- [ ] Extract `ArrowToTheBuild` directly into the active ESO `AddOns` directory.
-- [ ] Confirm ESO lists **Arrow to the Build** and reports no dependency errors.
-- [ ] Confirm the addon is not marked out of date for API 101050.
-- [ ] Log into one character without Lua errors.
+## Clean install
 
-## First snapshot
+1. Exit ESO.
+2. Remove only the ATTB test folders/files from the active profile when a clean test is intended:
+   - `AddOns\ArrowToTheBuild`
+   - `AddOns\ArrowToTheBuildBridge`
+   - `SavedVariables\ArrowToTheBuild.lua`
+   - `SavedVariables\ArrowToTheBuildBridge.lua`
+3. Install both 1.0.0 addon folders.
+4. Launch ESO and confirm both are enabled. The Sync Bridge must report `ArrowToTheBuild` as its required addon.
+5. Log into a character.
+6. Run `/attbstatus` and confirm version/schema/revision/budget output appears without Lua errors.
 
-- [ ] Run `/attbstatus`; it reports version `0.1.0-alpha.3`.
-- [ ] Run `/attbexport`; it confirms a snapshot was captured in memory.
-- [ ] Run `/reloadui` or log out.
-- [ ] Confirm `SavedVariables/ArrowToTheBuild.lua` exists.
-- [ ] Confirm the file contains `ArrowToTheBuildSavedVariables`.
-- [ ] Confirm the active character appears under `characters`.
+Do not delete unrelated ESO SavedVariables.
 
-## Character identity
+## Archive capture
 
-- [ ] Account display name is correct.
-- [ ] Megaserver is correct.
-- [ ] Character ID is a quoted string.
-- [ ] Character name, class, race, alliance and level are correct.
-- [ ] Class and race IDs are non-zero and match the character.
-- [ ] Gender name is localized or a valid Female/Male fallback.
+- Log into at least two different characters and use `/reloadui` or normal logout/load transitions between them.
+- Confirm `ArrowToTheBuild.lua` retains both stable character records.
+- Rename behavior must continue to key by stable character ID rather than creating a duplicate based only on display name.
+- Confirm identity, attributes, skill lines, purchases/morphs/passives, bars, equipment, and Champion data are present where the character exposes them.
 
-## Skills and bars
+## Bridge budget and current-state capture
 
-- [ ] Discovered skill lines are present.
-- [ ] Purchased actives, morphs and passives are present.
-- [ ] Morphed skills contain a non-empty `morphAbilityId` and `abilityId` identifies the selected morph.
-- [ ] Primary-bar abilities match the game.
-- [ ] Backup-bar abilities match the game after level 15.
-- [ ] Ultimate slots are stored as position 6.
+- Confirm `/attbstatus` reports the bridge estimated size and 32 KiB budget.
+- Test both a low-level character and a heavily progressed character.
+- Confirm identity/core progression survives any reduction path.
+- Make equipment, action-bar, skill/passive, attribute/progression, and Champion changes and verify the in-memory bridge revision advances.
+- Several changes during the local priority cooldown should coalesce into one deferred retry and the bridge should represent the newest complete state rather than a queue of deltas.
 
-## Equipment
+## SavedVariables timing test
 
-- [ ] Armor and jewelry slots are present.
-- [ ] Front and back weapons are present.
-- [ ] Set names and IDs appear for set pieces.
-- [ ] Trait, enchantment and quality values are present.
+This is a required real-ESO test because a mocked Lua runtime cannot prove disk behavior.
 
-## Champion Points
+1. Run `/reloadui` to establish a known physical-file baseline.
+2. Record the bridge file modification time.
+3. Make a known gameplay change.
+4. Record when the addon reports the new in-memory revision.
+5. Record when `ArrowToTheBuildBridge.lua` actually changes on disk.
+6. Confirm the desktop reflects the new file after the filesystem change.
+7. Repeat once with only ATTB addons enabled and once with the normal addon loadout if investigating contention.
 
-- [ ] Purchased Champion stars are present on a CP character.
-- [ ] Slotted Champion stars match all three constellations.
-- [ ] Champion slot entries include `disciplineId`, `disciplineName` and the full assignable slot range.
-- [ ] A non-CP character produces an empty but valid Champion section.
+Do **not** treat a delayed physical write as proof that capture failed. ESO controls serialization timing.
 
-## Multiple characters
+When a deterministic fresh disk snapshot is needed, use:
 
-Use two characters on the same megaserver and the same ESO environment (`live`, `liveeu`, or `pts`).
+```text
+/reloadui
+```
 
-- [ ] On the first character, run `/attbexport`; the message reports `1 character(s) stored in memory`.
-- [ ] Run `/attbstatus`; note `stored now 1`.
-- [ ] Run `/reloadui`, log out, or change characters through a normal loading screen.
-- [ ] On the second character, run `/attbstatus` before exporting. It should report `loaded at UI start 1`.
-- [ ] Run `/attbexport`; the message should report `2 character(s) stored in memory`.
-- [ ] Run `/attbstatus`; it should report `stored now 2`.
-- [ ] Run `/reloadui` or log out, then confirm both snapshots remain in the same SavedVariables file.
-- [ ] Return to the first character and confirm its existing stable-ID record updates rather than duplicating.
+Do not promise an instant or fixed-minute cadence.
 
-If the second character reports `loaded at UI start 0`, the first character was not present in the SavedVariables table loaded for that UI session. Record whether the characters were on different megaservers or `live`/`liveeu`/`pts` environments, and preserve the Lua file before further testing.
+## Natural-save behavior
 
-## Event refreshes
+- `player-activated` should refresh the bridge after a loading screen without spending a new priority request.
+- `player-deactivated` should capture pre-transition state and rely on ESO's natural save opportunity.
+- The durable archive remains excluded from normal-play SavedVariables autosaving through `DisableSavedVariablesAutoSaving: 1`.
+- The bridge remains eligible for normal-play save/priority behavior.
 
-After each action, allow the debounce to finish, then `/reloadui` before checking the disk file.
+## Desktop reconciliation
 
-- [ ] Gain a level.
-- [ ] Purchase or morph a skill.
-- [ ] Change an action-bar slot.
-- [ ] Change equipped gear.
-- [ ] Spend or slot Champion Points.
-- [ ] Change an attribute point where applicable.
+With ATTB desktop 2.0.0:
 
-## Error reporting
-
-When a Lua error occurs, capture:
-
-- The full error text and stack
-- Which character and server were active
-- The action performed immediately beforehand
-- The generated SavedVariables file, with account and character names redacted if desired
+- verify new-character discovery requires user approval;
+- verify a newer bridge cannot be rolled back by an older archive;
+- verify archive metadata can enrich a newer compact bridge;
+- verify omitted bridge sections do not erase the last complete compatible state;
+- verify current equipment/action bars/CP do not overwrite authored target gear/bars/CP plans;
+- verify Create Build from Character and Adapt Build to Character preserve CURRENT-vs-TARGET ownership;
+- verify `/reloadui` creates a reliable fresh desktop snapshot.

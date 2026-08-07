@@ -1,113 +1,99 @@
-# SavedVariables data format
+# SavedVariables data format - addon 1.0.0
 
-The addon declares one SavedVariables global:
+Arrow to the Build 1.0.0 deliberately uses two physical SavedVariables files.
+
+## Durable archive
+
+Addon folder: `ArrowToTheBuild`
+
+SavedVariables global:
 
 ```lua
 ArrowToTheBuildSavedVariables
 ```
 
-ESO serializes that global to:
+Physical file:
 
 ```text
 SavedVariables/ArrowToTheBuild.lua
 ```
 
-## Top-level structure
+The top-level archive uses **schema 1** and stores a `characters` table keyed by stable character key. Each current compact character record uses **snapshot schema 2**.
+
+Important root fields include:
+
+- `schemaVersion`
+- `addonVersion`
+- `apiVersion`
+- `revision`
+- `createdAt`
+- `lastUpdatedAt`
+- `lastCharacterKey`
+- `characters`
+
+A compact character snapshot includes the sections supported by the current client:
+
+- `identity`
+- `skills`
+- `equipment`
+- `champion`
+- `diagnostics`
+- `completeness`
+- `metadata`
+
+The archive retains readable names and richer metadata so the desktop can present useful information even when the small bridge intentionally omits repeated strings.
+
+## Current-character bridge
+
+Addon folder: `ArrowToTheBuildBridge`
+
+SavedVariables global:
 
 ```lua
-ArrowToTheBuildSavedVariables = {
-    schemaVersion = 1,
-    addonVersion = "0.1.0-alpha.3",
-    apiVersion = 101050,
-    revision = 12,
-    createdAt = 1786068000,
-    lastUpdatedAt = 1786069200,
-    lastPrioritySaveRequestedAt = 1786069200,
-    lastPrioritySaveCharacterKey = "@Account|NA Megaserver|1234567890123456",
-    lastPrioritySaveWasForced = true,
-    lastCharacterKey = "@Account|NA Megaserver|1234567890123456",
-    characters = {
-        ["@Account|NA Megaserver|1234567890123456"] = {
-            snapshotSchemaVersion = 1,
-            addonVersion = "0.1.0-alpha.3",
-            apiVersion = 101050,
-            capturedAt = 1786069200,
-            captureReason = "player-activated",
-            identity = {},
-            skills = {},
-            equipment = {},
-            champion = {},
-            diagnostics = {},
-            completeness = {},
-            metadata = {},
-        },
-    },
-}
+ArrowToTheBuildBridgeSavedVariables
 ```
 
-## Stable identity
+Physical file:
 
-The desktop app must identify a character with all three fields:
+```text
+SavedVariables/ArrowToTheBuildBridge.lua
+```
+
+The bridge uses **schema 2** and holds only the latest current-character payload. It is not a delta log and does not accumulate character history.
+
+Large repeated datasets are packed as tab-separated row blobs with newline-separated rows. Identity keeps the small human-readable values needed for first discovery; skills, equipment, and Champion data prefer stable numeric IDs so the desktop can enrich them from the archive/catalog.
+
+Bridge metadata includes an estimated serialized size, a 32 KiB internal budget, budget status, truncation/reduction information, revision, character identity, and captured sections.
+
+If the bridge needs to reduce payload size, non-essential detail is dropped in deterministic order. Identity and core numeric progression are never the first casualty. The desktop must preserve the latest complete stored/archive sections when a newer reduced bridge omits a section.
+
+## Stable character identity
+
+The desktop identifies a character using all three values:
 
 ```text
 accountName + worldName + characterId
 ```
 
-`characterId` is exported as a string to avoid loss of 64-bit precision in JavaScript.
+`characterId` is serialized as a string to avoid JavaScript 64-bit precision loss. Character names are display data and are not safe primary keys because they can change.
 
-Do not use character name as the primary key. Names may change.
+## Revisions and reconciliation
 
-## Revision behavior
+Archive and bridge revisions are tracked independently.
 
-`revision` increases every time any character snapshot is replaced. The desktop importer can ignore a filesystem event when the parsed revision has not changed.
+When both contain the same character:
 
-Each character snapshot also keeps:
-
-- `metadata.firstSeenAt`
-- `metadata.lastSeenAt`
-- `metadata.captureCount`
+- a newer bridge snapshot may update current numeric/ID-first state;
+- an older archive must never roll that newer state backward;
+- the archive may enrich missing readable names/metadata on the newer bridge;
+- omitted/reduced bridge sections are reconciled against the last complete compatible data rather than interpreted as deletions.
 
 ## Optional fields
 
-ESO APIs can differ between patches, account states, and progression systems. Fields unavailable to the client are stored as `nil` and omitted by ESO's serializer. Importers must treat absent fields as unknown rather than as zero or false.
+ESO APIs differ by patch, account state, and character progression. Missing values are unknown, not automatically zero or false. Importers must tolerate omitted sections and empty Lua tables.
 
-## Diagnostics
+## Disk timing
 
-Collector failures are contained in:
+A revision describes the in-memory data structure that ESO will eventually serialize. It does **not** prove that the physical SavedVariables file changed at the same instant.
 
-```lua
-diagnostics = {
-    warnings = {},
-    errors = {},
-}
-```
-
-A partial snapshot remains importable. The `completeness` object indicates which major sections were collected.
-
-## Skill identity fields
-
-Purchased progression skills may contain several numeric IDs:
-
-- `baseAbilityId` — the unmorphed skill family ID.
-- `morphAbilityId` — the canonical selected morph ID when the current client exposes it.
-- `rankedAbilityId` — the current rank-specific progression ability ID.
-- `abilityId` — preferred current ID, choosing morph, ranked, then base in that order.
-- `progressionId` and `progressionIndex` — ESO progression identifiers used for reconciliation.
-
-Importers should retain the names as display data, but prefer numeric identity fields for locale-independent matching.
-
-## Champion slots
-
-`champion.slotted.slots` spans the full assignable Champion bar range. Each entry includes its action-slot index and required discipline ID/name so Craft, Warfare and Fitness slots can be reconstructed separately.
-
-
-## Save-request diagnostics
-
-`lastPrioritySaveRequestedAt`, `lastPrioritySaveCharacterKey`, and `lastPrioritySaveWasForced` record the most recent priority-save request accepted by the addon-side API call. They do not prove the operating-system file has already changed; ESO owns serialization timing.
-
-The `/attbstatus` command also reports two runtime-only counts:
-
-- `loaded at UI start` — character records present when this UI session loaded the SavedVariables table.
-- `stored now` — records currently present after captures in this UI session.
-
-On a second character, `loaded at UI start 1` followed by `stored now 2` confirms the first record was loaded and the second was appended before disk inspection.
+ESO owns disk flush timing. `/reloadui`, loading screens, logout, and exit are important persistence points. See [TESTING.md](TESTING.md) for timing tests.

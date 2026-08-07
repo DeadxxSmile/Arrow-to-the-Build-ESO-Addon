@@ -73,12 +73,12 @@ local function getCurrentAbilityIds(skillType, lineIndex, abilityIndex, progress
     }
 end
 
-local function collectAbility(skillType, lineIndex, abilityIndex, lineId, lineName)
-    local succeeded, abilityName, icon, earnedRank, passive, ultimate, purchased, progressionIndex, rankIndex =
+local function collectAbility(skillType, lineIndex, abilityIndex, lineId)
+    local succeeded, abilityName, _, _, passive, ultimate, purchased, progressionIndex, rankIndex =
         Util.SafeCall("GetSkillAbilityInfo", skillType, lineIndex, abilityIndex)
 
-    if not succeeded or not abilityName then
-        return nil
+    if not succeeded or not abilityName or purchased ~= true then
+        return nil, nil
     end
 
     local currentMorph = 0
@@ -93,7 +93,7 @@ local function collectAbility(skillType, lineIndex, abilityIndex, lineId, lineNa
 
     local passiveRank = nil
     local passiveMaxRank = nil
-    if passive and purchased then
+    if passive then
         local upgradeSucceeded, currentUpgradeRank, maximumUpgradeRank =
             Util.SafeCall("GetSkillAbilityUpgradeInfo", skillType, lineIndex, abilityIndex)
         if upgradeSucceeded then
@@ -111,31 +111,52 @@ local function collectAbility(skillType, lineIndex, abilityIndex, lineId, lineNa
         currentRank
     )
 
-    return {
+    local compact = {
         abilityId = ids.abilityId,
         baseAbilityId = ids.baseAbilityId,
-        morphAbilityId = ids.morphAbilityId,
-        rankedAbilityId = ids.rankedAbilityId,
         progressionId = ids.progressionId,
-        progressionIndex = progressionIndex,
         name = Util.CleanName(abilityName),
-        icon = icon,
-        skillType = skillType,
-        skillLineId = lineId,
-        skillLineName = lineName,
-        abilityIndex = abilityIndex,
-        earnedRank = earnedRank or 0,
         currentRank = currentRank or 0,
         currentMorph = currentMorph or 0,
         passiveRank = passiveRank,
         passiveMaxRank = passiveMaxRank,
         isPassive = passive == true,
         isUltimate = ultimate == true,
-        purchased = purchased == true,
     }
+
+    local lookup = {
+        ability = compact,
+        skillLineId = lineId,
+        ids = {
+            ids.abilityId,
+            ids.baseAbilityId,
+            ids.morphAbilityId,
+            ids.rankedAbilityId,
+        },
+    }
+    return compact, lookup
 end
 
-local function collectActionBar(hotbarCategory, label)
+local function addLookup(byId, byName, lookup)
+    if not lookup then
+        return
+    end
+    for _, value in ipairs(lookup.ids or {}) do
+        if value and value ~= 0 then
+            byId[tostring(value)] = lookup
+        end
+    end
+    local nameKey = Util.NormalizeName(lookup.ability and lookup.ability.name)
+    if nameKey then
+        if byName[nameKey] == nil then
+            byName[nameKey] = lookup
+        else
+            byName[nameKey] = false
+        end
+    end
+end
+
+local function collectActionBar(hotbarCategory, label, byId, byName)
     local firstSlot = (ACTION_BAR_FIRST_NORMAL_SLOT_INDEX or 2) + 1
     local ultimateSlot = (ACTION_BAR_ULTIMATE_SLOT_INDEX or 7) + 1
     local slots = {}
@@ -151,14 +172,38 @@ local function collectActionBar(hotbarCategory, label)
             end
         end
 
-        table.insert(slots, {
+        local match = nil
+        local matchMethod = nil
+        if abilityId and abilityId > 0 then
+            match = byId[tostring(abilityId)]
+            if match then
+                matchMethod = "ability-id"
+            end
+        end
+        if not match then
+            local nameKey = Util.NormalizeName(name)
+            if nameKey and byName[nameKey] then
+                match = byName[nameKey]
+                matchMethod = "name"
+            end
+        end
+
+        local slot = {
             position = slotIndex - firstSlot + 1,
-            actionSlotIndex = slotIndex,
             abilityId = abilityId or 0,
             name = Util.CleanName(name or "Empty"),
             slotType = slotType,
             isUltimate = slotIndex == ultimateSlot,
-        })
+        }
+        if match and match.ability then
+            slot.skillAbilityId = match.ability.abilityId
+            slot.progressionId = match.ability.progressionId
+            slot.skillLineId = match.skillLineId
+            slot.currentMorph = match.ability.currentMorph or 0
+            slot.currentRank = match.ability.currentRank or 0
+            slot.matchMethod = matchMethod
+        end
+        table.insert(slots, slot)
     end
 
     return {
@@ -174,6 +219,8 @@ function Collector.Collect()
         actionBars = {},
         activeWeaponPair = nil,
     }
+    local byId = {}
+    local byName = {}
 
     local maxSkillType = Util.Value("GetNumSkillTypes", 9)
     if not maxSkillType or maxSkillType < 9 then
@@ -183,29 +230,21 @@ function Collector.Collect()
     for skillType = 1, maxSkillType do
         local lineCount = Util.Value("GetNumSkillLines", 0, skillType)
         for lineIndex = 1, lineCount do
-            local dynamicSucceeded, rank, advised, active, discovered =
+            local dynamicSucceeded, rank, _, _, discovered =
                 Util.SafeCall("GetSkillLineDynamicInfo", skillType, lineIndex)
             local lineId = Util.Value("GetSkillLineId", nil, skillType, lineIndex)
-            local lineName = nil
-            if lineId then
-                lineName = Util.Value("GetSkillLineNameById", nil, lineId)
-            end
+            local lineName = lineId and Util.Value("GetSkillLineNameById", nil, lineId) or nil
 
             if dynamicSucceeded and discovered and lineName and lineName ~= "" then
-                local xpSucceeded, lastRankXp, nextRankXp, currentXp =
+                local xpSucceeded, _, nextRankXp, currentXp =
                     Util.SafeCall("GetSkillLineXPInfo", skillType, lineIndex)
                 local lineEntry = {
                     skillType = skillType,
                     skillTypeName = getSkillTypeName(skillType),
                     skillLineId = lineId,
-                    lineIndex = lineIndex,
                     name = Util.CleanName(lineName),
                     rank = rank or 0,
-                    advised = advised == true,
-                    active = active == true,
-                    discovered = true,
                     xp = xpSucceeded and {
-                        previousRank = lastRankXp or 0,
                         nextRank = nextRankXp or 0,
                         current = currentXp or 0,
                     } or nil,
@@ -214,9 +253,10 @@ function Collector.Collect()
 
                 local abilityCount = Util.Value("GetNumSkillAbilities", 0, skillType, lineIndex)
                 for abilityIndex = 1, abilityCount do
-                    local ability = collectAbility(skillType, lineIndex, abilityIndex, lineId, lineEntry.name)
-                    if ability and ability.purchased then
+                    local ability, lookup = collectAbility(skillType, lineIndex, abilityIndex, lineId)
+                    if ability then
                         table.insert(lineEntry.abilities, ability)
+                        addLookup(byId, byName, lookup)
                     end
                 end
 
@@ -227,8 +267,8 @@ function Collector.Collect()
 
     local primaryCategory = HOTBAR_CATEGORY_PRIMARY or 0
     local backupCategory = HOTBAR_CATEGORY_BACKUP or 1
-    table.insert(result.actionBars, collectActionBar(primaryCategory, "Primary"))
-    table.insert(result.actionBars, collectActionBar(backupCategory, "Backup"))
+    table.insert(result.actionBars, collectActionBar(primaryCategory, "Primary", byId, byName))
+    table.insert(result.actionBars, collectActionBar(backupCategory, "Backup", byId, byName))
 
     local weaponPairSucceeded, activePair, locked = Util.SafeCall("GetActiveWeaponPairInfo")
     if weaponPairSucceeded then

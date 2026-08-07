@@ -82,6 +82,26 @@ function Util.CleanName(value)
     return text
 end
 
+function Util.NormalizeName(value)
+    if value == nil then
+        return nil
+    end
+
+    local cleaned = Util.CleanName(value)
+    if cleaned == nil then
+        return nil
+    end
+
+    if type(zo_strlower) == "function" then
+        local succeeded, lowered = pcall(zo_strlower, tostring(cleaned))
+        if succeeded and lowered then
+            return lowered
+        end
+    end
+
+    return string.lower(tostring(cleaned))
+end
+
 function Util.IdToString(value)
     if value == nil then
         return nil
@@ -103,6 +123,49 @@ end
 
 function Util.Now()
     return Util.Value("GetTimeStamp", 0)
+end
+
+-- Formats an ESO Unix timestamp without depending on the restricted os library.
+-- UTC is explicit so diagnostics remain unambiguous across local time zones.
+function Util.FormatTimestamp(value)
+    local timestamp = math.floor(tonumber(value or 0) or 0)
+    if timestamp <= 0 then
+        return "unknown"
+    end
+
+    local days = math.floor(timestamp / 86400)
+    local secondsOfDay = timestamp - (days * 86400)
+    local hour = math.floor(secondsOfDay / 3600)
+    local minute = math.floor((secondsOfDay % 3600) / 60)
+    local second = secondsOfDay % 60
+
+    -- Civil date conversion adapted from the public-domain days-from-civil
+    -- algorithm by Howard Hinnant. Unix day zero is 1970-01-01.
+    local adjustedDays = days + 719468
+    local era = math.floor(adjustedDays / 146097)
+    local dayOfEra = adjustedDays - (era * 146097)
+    local yearOfEra = math.floor(
+        (dayOfEra - math.floor(dayOfEra / 1460) + math.floor(dayOfEra / 36524) - math.floor(dayOfEra / 146096))
+        / 365
+    )
+    local year = yearOfEra + (era * 400)
+    local dayOfYear = dayOfEra - (365 * yearOfEra + math.floor(yearOfEra / 4) - math.floor(yearOfEra / 100))
+    local monthPrime = math.floor((5 * dayOfYear + 2) / 153)
+    local day = dayOfYear - math.floor((153 * monthPrime + 2) / 5) + 1
+    local month = monthPrime + (monthPrime < 10 and 3 or -9)
+    if month <= 2 then
+        year = year + 1
+    end
+
+    return string.format(
+        "%04d-%02d-%02d %02d:%02d:%02d UTC",
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second
+    )
 end
 
 function Util.GetApiVersion()

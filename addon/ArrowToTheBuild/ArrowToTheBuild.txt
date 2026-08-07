@@ -1,13 +1,15 @@
 ## Title: Arrow to the Build
 ## Description: Silent character-data exporter for the Arrow to the Build desktop application.
 ## Author: Arrow to the Build Project
-## Version: 0.1.0-alpha.3
-## AddOnVersion: 101
+## Version: 1.0.0
+## AddOnVersion: 10000
 ## APIVersion: 101050
 ## SavedVariables: ArrowToTheBuildSavedVariables
+## DisableSavedVariablesAutoSaving: 1
 
 Namespace.lua
 Util.lua
+Schema.lua
 Collectors/Character.lua
 Collectors/Skills.lua
 Collectors/Equipment.lua

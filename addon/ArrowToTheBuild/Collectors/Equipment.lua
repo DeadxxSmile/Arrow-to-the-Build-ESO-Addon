@@ -20,7 +20,6 @@ local EQUIPMENT_SLOTS = {
     { constantName = "EQUIP_SLOT_BACKUP_MAIN", label = "Back Main Hand" },
     { constantName = "EQUIP_SLOT_BACKUP_OFF", label = "Back Off Hand" },
     { constantName = "EQUIP_SLOT_BACKUP_POISON", label = "Back Poison" },
-    { constantName = "EQUIP_SLOT_COSTUME", label = "Costume" },
 }
 
 local function enumName(prefix, value)
@@ -41,18 +40,12 @@ local function collectItem(slotId, slotLabel)
         return nil
     end
 
-    local infoSucceeded, icon, stack, sellPrice, meetsUsageRequirement, locked, equipType, itemStyleId, quality =
-        Util.SafeCall("GetItemInfo", bagId, slotId)
+    local infoSucceeded, _, _, _, _, _, equipType, _, quality = Util.SafeCall("GetItemInfo", bagId, slotId)
     local itemName = Util.Value("GetItemName", nil, bagId, slotId)
     local itemId = Util.Value("GetItemLinkItemId", nil, itemLink)
     local traitType = Util.Value("GetItemTrait", nil, bagId, slotId)
-
-    local setSucceeded, hasSet, setName, numBonuses, numNormalEquipped, maxEquipped, setId, numPerfectedEquipped =
-        Util.SafeCall("GetItemLinkSetInfo", itemLink, true)
-
-    local enchantSucceeded, hasCharges, enchantHeader, enchantDescription =
-        Util.SafeCall("GetItemLinkEnchantInfo", itemLink)
-
+    local setSucceeded, hasSet, setName, _, _, _, setId = Util.SafeCall("GetItemLinkSetInfo", itemLink, true)
+    local enchantSucceeded, _, enchantHeader, enchantDescription = Util.SafeCall("GetItemLinkEnchantInfo", itemLink)
     local armorType = Util.Value("GetItemLinkArmorType", nil, itemLink)
     local weaponType = Util.Value("GetItemLinkWeaponType", nil, itemLink)
     local itemType = Util.Value("GetItemLinkItemType", nil, itemLink)
@@ -63,8 +56,6 @@ local function collectItem(slotId, slotLabel)
         slotName = slotLabel,
         itemId = itemId,
         name = Util.CleanName(itemName or "Unknown Item"),
-        itemLink = itemLink,
-        icon = infoSucceeded and icon or nil,
         quality = quality or Util.Value("GetItemLinkQuality", nil, itemLink),
         requiredLevel = Util.Value("GetItemLinkRequiredLevel", nil, itemLink),
         requiredChampionPoints = Util.Value("GetItemLinkRequiredChampionPoints", nil, itemLink),
@@ -84,33 +75,17 @@ local function collectItem(slotId, slotLabel)
             hasSet = hasSet == true,
             id = setId,
             name = Util.CleanName(setName),
-            bonusCount = numBonuses,
-            equippedCount = numNormalEquipped,
-            maximumEquipped = maxEquipped,
-            perfectedEquippedCount = numPerfectedEquipped,
         } or {
             hasSet = false,
         },
         enchantment = enchantSucceeded and {
-            hasCharges = hasCharges == true,
             name = Util.CleanName(enchantHeader or enchantDescription),
-            description = enchantDescription,
         } or nil,
-        metadata = {
-            stack = stack,
-            sellPrice = sellPrice,
-            meetsUsageRequirement = meetsUsageRequirement,
-            locked = locked,
-            itemStyleId = itemStyleId,
-        },
     }
 end
 
 function Collector.Collect()
-    local result = {
-        items = {},
-    }
-
+    local result = { items = {} }
     for _, slotDefinition in ipairs(EQUIPMENT_SLOTS) do
         local slotId = _G[slotDefinition.constantName]
         if slotId ~= nil then
@@ -120,6 +95,5 @@ function Collector.Collect()
             end
         end
     end
-
     return result
 end

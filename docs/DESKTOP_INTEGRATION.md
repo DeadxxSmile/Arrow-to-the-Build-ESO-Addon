@@ -1,58 +1,59 @@
-# Desktop integration contract
+# Desktop integration contract - addon 1.0.0
 
-This document describes the importer planned for the ATTB Electron app. It is not implemented by the addon.
+The Arrow to the Build desktop app consumes both SavedVariables files as restricted data. It does not execute Lua.
 
-## File discovery
+## Source priority
 
-The desktop app should derive the SavedVariables file from the selected ESO environment root:
+The two files have different jobs:
 
-```text
-<Elder Scrolls Online root>/SavedVariables/ArrowToTheBuild.lua
-```
+- `ArrowToTheBuild.lua` - durable, fuller, multi-character archive and display metadata.
+- `ArrowToTheBuildBridge.lua` - smaller, potentially fresher current-character state.
 
-The common environment roots are `live`, `liveeu`, and `pts`. The user must be able to browse to a nonstandard location.
+The desktop watches both sources and keeps independent revision tracking. A fresher bridge must not be rolled back by an older archive. The archive may enrich names and other omitted metadata when doing so does not replace newer numeric state.
 
-## Watching safely
+## CURRENT versus TARGET
 
-The Electron main process should:
+Addon data represents **observed CURRENT reality** only.
 
-1. Watch the specific SavedVariables file and its parent directory.
-2. Debounce filesystem events.
-3. Wait until file size and modification time stabilize.
-4. Parse the restricted Lua-table data format without executing Lua.
-5. Reject functions, metatables, arbitrary expressions and executable statements.
-6. Compare top-level `revision` before processing.
-7. Reattach the watcher when ESO replaces the file.
+The desktop application owns **TARGET planning**, including:
 
-## Character matching
+- selected build
+- future recommendations
+- variants/loadouts
+- Build Notes
+- target gear stages
+- authored Champion Point plans
+- Build Editor content and revisions
 
-Use:
+Sync must never silently overwrite those target-owned fields.
+
+## Character discovery
+
+A newly observed character is not automatically created or linked in ATTB.
+
+Character identity is:
 
 ```text
 accountName + worldName + characterId
 ```
 
-Do not match only by character name.
+The user explicitly chooses whether to:
 
-## Import behavior
+- add the character;
+- link a compatible existing ATTB character;
+- create a new build from the observed character;
+- adapt an existing compatible-class target build.
 
-- Existing linked ATTB characters may update their observed game state automatically.
-- Newly discovered addon characters remain pending unless automatic character creation is enabled.
-- Addon snapshots must never replace the chosen ATTB build, recommendations, user notes, or manually authored build data.
-- Missing optional fields mean unknown, not zero.
-- Characters absent from a newer snapshot file must not be deleted automatically.
+Class mismatches are rejected.
 
-## Planned desktop controls
+## Overrides
 
-```text
-Settings > App Settings > ESO Addon Integration
-```
+The desktop can optionally layer per-field local overrides over the latest observed snapshot. New addon data continues updating underneath an override. Restoring a field removes only that override and immediately exposes the latest live value again.
 
-- Enable addon synchronization
-- Addon installation folder
-- SavedVariables file or detected environment
-- Get Addon / installation guide
-- Rescan now
-- Automatically add all discovered characters
+Turning override mode off removes synchronized-data overrides; it does not delete the character, target build, notes, or planning content.
 
-The Add Character page will replace `Import Another Build` with `Import Data From Addon`.
+## SavedVariables timing
+
+The filesystem watcher reacts when ESO changes the physical files. It does not assume a fixed autosave interval.
+
+`RequestAddOnSavedVariablesPrioritySave()` is best effort and rate limited. It is not an immediate write primitive. `/reloadui` is the reliable user-controlled path when a fresh physical snapshot is needed for testing or troubleshooting.

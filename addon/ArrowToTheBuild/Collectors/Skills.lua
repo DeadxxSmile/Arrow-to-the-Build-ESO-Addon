@@ -28,7 +28,10 @@ local function getCurrentAbilityIds(skillType, lineIndex, abilityIndex, progress
     end
 
     return {
-        abilityId = rankedAbilityId or morphAbilityId or baseAbilityId,
+        -- Preserve the established snapshot contract: a morphed skill's stable
+        -- morph ability ID is the primary value. Ranked/effective variants are
+        -- lookup aliases, not replacements for the stored skill identity.
+        abilityId = morphAbilityId or rankedAbilityId or baseAbilityId,
         baseAbilityId = baseAbilityId,
         morphAbilityId = morphAbilityId,
         rankedAbilityId = rankedAbilityId,

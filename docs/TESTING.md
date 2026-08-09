@@ -1,4 +1,4 @@
-# Addon 1.0.0 test checklist
+# Addon 1.1.1 test checklist
 
 Use this checklist when validating an addon change independently or as part of an ATTB desktop release.
 
@@ -7,13 +7,13 @@ Use this checklist when validating an addon change independently or as part of a
 1. Exit ESO.
 2. Remove only the ATTB test folders/files from the active profile when a clean test is intended:
    - `AddOns\ArrowToTheBuild`
-   - `AddOns\ArrowToTheBuildBridge`
-   - `SavedVariables\ArrowToTheBuild.lua`
-   - `SavedVariables\ArrowToTheBuildBridge.lua`
-3. Install both 1.0.0 addon folders.
-4. Launch ESO and confirm both are enabled. The Sync Bridge must report `ArrowToTheBuild` as its required addon.
+   - obsolete `AddOns\ArrowToTheBuildBridge` if it exists from an older release;
+   - `SavedVariables\ArrowToTheBuild.lua` only when a clean archive is specifically required;
+   - obsolete `SavedVariables\ArrowToTheBuildBridge.lua` if it exists from an older release.
+3. Install the single `ArrowToTheBuild` 1.1.1 addon folder.
+4. Launch ESO and confirm **Arrow to the Build** is enabled with no missing dependency.
 5. Log into a character.
-6. Run `/attbstatus` and confirm version/schema/revision/budget output appears without Lua errors.
+6. Run `/attbstatus` and confirm version `1.1.1`, API `101050`, character count, and revision output appear without Lua errors.
 
 Do not delete unrelated ESO SavedVariables.
 
@@ -24,25 +24,50 @@ Do not delete unrelated ESO SavedVariables.
 - Rename behavior must continue to key by stable character ID rather than creating a duplicate based only on display name.
 - Confirm identity, attributes, skill lines, purchases/morphs/passives, bars, equipment, and Champion data are present where the character exposes them.
 
-## Bridge budget and current-state capture
+## Enum-label regression test
 
-- Confirm `/attbstatus` reports the bridge estimated size and 32 KiB budget.
-- Test both a low-level character and a heavily progressed character.
-- Confirm identity/core progression survives any reduction path.
-- Make equipment, action-bar, skill/passive, attribute/progression, and Champion changes and verify the in-memory bridge revision advances.
-- Several changes during the local priority cooldown should coalesce into one deferred retry and the bridge should represent the newest complete state rather than a queue of deltas.
+This is required for 1.1.1 because 1.1.0 accidentally passed numeric `SI_*` globals to the two-argument `GetString` overload.
+
+After `/reloadui`, inspect the current character snapshot and verify:
+
+- `skillTypeName` contains sensible ESO categories rather than unrelated settings text;
+- worn armor has `armorTypeName` such as `Light`, `Medium`, or `Heavy` matching its numeric `armorType`;
+- `equipTypeName` describes the equipment slot/type rather than settings labels such as `Graphics Options`, `Brightness`, or `Reset to Defaults`;
+- `trait.name` describes the actual item trait rather than gamepad/settings prompts;
+- weapon type names describe the weapon rather than unrelated UI strings;
+- gender display text is sensible for the numeric gender value;
+- the SavedVariables file contains no repeated `Input Language Changed to:` corruption caused by enum lookup.
+
+Numeric enum values must remain present alongside localized display names.
+
+## Action-bar matching
+
+- Verify both primary and backup bars contain the same abilities shown by ESO.
+- For skills whose hotbar action ID differs from the progression ability ID, confirm the slot still resolves to the correct skill line/progression.
+- Prefer `matchMethod = "ability-id"` or `matchMethod = "ability-keys"` when ESO can identify the skill directly.
+- `matchMethod = "name"` is allowed only as the final unique-name compatibility fallback.
+- Verify duplicate skill names never cause a slot to be attached to the wrong skill line.
+
+## Equipment event behavior
+
+The equipment listener is filtered at registration time to `BAG_WORN` plus `INVENTORY_UPDATE_REASON_DEFAULT`.
+
+- Equip or unequip a piece and confirm equipment refreshes.
+- Lose ordinary armor durability in combat and confirm this no longer causes continuous equipment captures.
+- Weapon charge consumption should not create continuous equipment captures.
+- Repairing an equipped item may still produce a default inventory update; an occasional refresh for that case is acceptable.
 
 ## SavedVariables timing test
 
 This is a required real-ESO test because a mocked Lua runtime cannot prove disk behavior.
 
 1. Run `/reloadui` to establish a known physical-file baseline.
-2. Record the bridge file modification time.
+2. Record the `ArrowToTheBuild.lua` modification time.
 3. Make a known gameplay change.
-4. Record when the addon reports the new in-memory revision.
-5. Record when `ArrowToTheBuildBridge.lua` actually changes on disk.
+4. Run `/attbstatus` if useful to confirm an in-memory capture/revision advanced.
+5. Record when `ArrowToTheBuild.lua` actually changes on disk.
 6. Confirm the desktop reflects the new file after the filesystem change.
-7. Repeat once with only ATTB addons enabled and once with the normal addon loadout if investigating contention.
+7. Repeat once with only ATTB enabled and once with the normal addon loadout if investigating save contention.
 
 Do **not** treat a delayed physical write as proof that capture failed. ESO controls serialization timing.
 
@@ -54,21 +79,33 @@ When a deterministic fresh disk snapshot is needed, use:
 
 Do not promise an instant or fixed-minute cadence.
 
-## Natural-save behavior
+## SavedVariables policy
 
-- `player-activated` should refresh the bridge after a loading screen without spending a new priority request.
-- `player-deactivated` should capture pre-transition state and rely on ESO's natural save opportunity.
-- The durable archive remains excluded from normal-play SavedVariables autosaving through `DisableSavedVariablesAutoSaving: 1`.
-- The bridge remains eligible for normal-play save/priority behavior.
+- The single archive manifest must contain `## DisableSavedVariablesAutoSaving: 1`.
+- `/reloadui`, loading screens, logout, and exit remain the persistence path.
+- The addon must not reintroduce `RequestAddOnSavedVariablesPrioritySave` or a small bridge merely to chase normal-play disk writes for a large archive.
 
-## Desktop reconciliation
+## Desktop integration
 
-With ATTB desktop 2.0.0:
+With a desktop build that supports the single exporter:
 
 - verify new-character discovery requires user approval;
-- verify a newer bridge cannot be rolled back by an older archive;
-- verify archive metadata can enrich a newer compact bridge;
-- verify omitted bridge sections do not erase the last complete compatible state;
 - verify current equipment/action bars/CP do not overwrite authored target gear/bars/CP plans;
 - verify Create Build from Character and Adapt Build to Character preserve CURRENT-vs-TARGET ownership;
-- verify `/reloadui` creates a reliable fresh desktop snapshot.
+- verify linking is stable across a character rename because identity uses account + world + character ID;
+- verify `/reloadui` creates a reliable fresh desktop snapshot;
+- verify an obsolete bridge folder/file is not required after migration.
+
+## Source-level regression checks
+
+The desktop repository includes static source tests for the bundled addon. Before packaging a desktop release, run its normal test suite and confirm the addon-source regression test passes. In particular, no current addon source should contain a call shaped like:
+
+```lua
+GetString(SI_SOMETHING, value)
+```
+
+for an enum prefix. The correct two-argument form is:
+
+```lua
+GetString("SI_SOMETHING", value)
+```

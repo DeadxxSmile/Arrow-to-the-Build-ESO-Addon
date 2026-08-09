@@ -4,81 +4,64 @@ local Collector = {}
 ATTB.Collectors.Equipment = Collector
 
 local EQUIPMENT_SLOTS = {
-    { constantName = "EQUIP_SLOT_HEAD", label = "Head" },
-    { constantName = "EQUIP_SLOT_SHOULDERS", label = "Shoulders" },
-    { constantName = "EQUIP_SLOT_CHEST", label = "Chest" },
-    { constantName = "EQUIP_SLOT_HAND", label = "Hands" },
-    { constantName = "EQUIP_SLOT_WAIST", label = "Waist" },
-    { constantName = "EQUIP_SLOT_LEGS", label = "Legs" },
-    { constantName = "EQUIP_SLOT_FEET", label = "Feet" },
-    { constantName = "EQUIP_SLOT_NECK", label = "Neck" },
-    { constantName = "EQUIP_SLOT_RING1", label = "Ring 1" },
-    { constantName = "EQUIP_SLOT_RING2", label = "Ring 2" },
-    { constantName = "EQUIP_SLOT_MAIN_HAND", label = "Front Main Hand" },
-    { constantName = "EQUIP_SLOT_OFF_HAND", label = "Front Off Hand" },
-    { constantName = "EQUIP_SLOT_POISON", label = "Front Poison" },
-    { constantName = "EQUIP_SLOT_BACKUP_MAIN", label = "Back Main Hand" },
-    { constantName = "EQUIP_SLOT_BACKUP_OFF", label = "Back Off Hand" },
-    { constantName = "EQUIP_SLOT_BACKUP_POISON", label = "Back Poison" },
+    { EQUIP_SLOT_HEAD, "Head" },
+    { EQUIP_SLOT_SHOULDERS, "Shoulders" },
+    { EQUIP_SLOT_CHEST, "Chest" },
+    { EQUIP_SLOT_HAND, "Hands" },
+    { EQUIP_SLOT_WAIST, "Waist" },
+    { EQUIP_SLOT_LEGS, "Legs" },
+    { EQUIP_SLOT_FEET, "Feet" },
+    { EQUIP_SLOT_NECK, "Neck" },
+    { EQUIP_SLOT_RING1, "Ring 1" },
+    { EQUIP_SLOT_RING2, "Ring 2" },
+    { EQUIP_SLOT_MAIN_HAND, "Front Main Hand" },
+    { EQUIP_SLOT_OFF_HAND, "Front Off Hand" },
+    { EQUIP_SLOT_POISON, "Front Poison" },
+    { EQUIP_SLOT_BACKUP_MAIN, "Back Main Hand" },
+    { EQUIP_SLOT_BACKUP_OFF, "Back Off Hand" },
+    { EQUIP_SLOT_BACKUP_POISON, "Back Poison" },
 }
 
-local function enumName(prefix, value)
-    if value == nil then
-        return nil
-    end
-    return Util.GetStringForEnum(prefix, value, tostring(value))
-end
-
 local function collectItem(slotId, slotLabel)
-    local bagId = BAG_WORN
-    if bagId == nil or slotId == nil then
+    local itemLink = GetItemLink(BAG_WORN, slotId, LINK_STYLE_DEFAULT)
+    if itemLink == "" then
         return nil
     end
 
-    local itemLink = Util.Value("GetItemLink", "", bagId, slotId, LINK_STYLE_DEFAULT or 0)
-    if not itemLink or itemLink == "" then
-        return nil
-    end
-
-    local infoSucceeded, _, _, _, _, _, equipType, _, quality = Util.SafeCall("GetItemInfo", bagId, slotId)
-    local itemName = Util.Value("GetItemName", nil, bagId, slotId)
-    local itemId = Util.Value("GetItemLinkItemId", nil, itemLink)
-    local traitType = Util.Value("GetItemTrait", nil, bagId, slotId)
-    local setSucceeded, hasSet, setName, _, _, _, setId = Util.SafeCall("GetItemLinkSetInfo", itemLink, true)
-    local enchantSucceeded, _, enchantHeader, enchantDescription = Util.SafeCall("GetItemLinkEnchantInfo", itemLink)
-    local armorType = Util.Value("GetItemLinkArmorType", nil, itemLink)
-    local weaponType = Util.Value("GetItemLinkWeaponType", nil, itemLink)
-    local itemType = Util.Value("GetItemLinkItemType", nil, itemLink)
-    local linkEquipType = Util.Value("GetItemLinkEquipType", equipType, itemLink)
+    local equipType = GetItemEquipType(BAG_WORN, slotId)
+    local itemType = GetItemType(BAG_WORN, slotId)
+    local armorType = GetItemArmorType(BAG_WORN, slotId)
+    local weaponType = GetItemWeaponType(BAG_WORN, slotId)
+    local traitType = GetItemTrait(BAG_WORN, slotId)
+    local hasSet, setName, _, _, _, setId = GetItemLinkSetInfo(itemLink, true)
+    local _, enchantHeader, enchantDescription = GetItemLinkEnchantInfo(itemLink)
 
     return {
         equipSlot = slotId,
         slotName = slotLabel,
-        itemId = itemId,
-        name = Util.CleanName(itemName or "Unknown Item"),
-        quality = quality or Util.Value("GetItemLinkQuality", nil, itemLink),
-        requiredLevel = Util.Value("GetItemLinkRequiredLevel", nil, itemLink),
-        requiredChampionPoints = Util.Value("GetItemLinkRequiredChampionPoints", nil, itemLink),
-        equipType = linkEquipType,
-        equipTypeName = enumName("SI_EQUIPTYPE", linkEquipType),
+        itemId = GetItemId(BAG_WORN, slotId),
+        name = Util.CleanName(GetItemName(BAG_WORN, slotId)),
+        quality = GetItemFunctionalQuality(BAG_WORN, slotId),
+        requiredLevel = GetItemRequiredLevel(BAG_WORN, slotId),
+        requiredChampionPoints = GetItemRequiredChampionPoints(BAG_WORN, slotId),
+        equipType = equipType,
+        equipTypeName = Util.EnumName("SI_EQUIPTYPE", equipType, "Unknown"),
         itemType = itemType,
-        itemTypeName = enumName("SI_ITEMTYPE", itemType),
+        itemTypeName = Util.EnumName("SI_ITEMTYPE", itemType, "Unknown"),
         armorType = armorType,
-        armorTypeName = enumName("SI_ARMORTYPE", armorType),
+        armorTypeName = armorType and armorType > 0 and Util.EnumName("SI_ARMORTYPE", armorType, "Unknown") or "",
         weaponType = weaponType,
-        weaponTypeName = weaponType and weaponType > 0 and enumName("SI_WEAPONTYPE", weaponType) or "None",
+        weaponTypeName = weaponType and weaponType > 0 and Util.EnumName("SI_WEAPONTYPE", weaponType, "Unknown") or "None",
         trait = {
             id = traitType,
-            name = enumName("SI_ITEMTRAITTYPE", traitType),
+            name = Util.EnumName("SI_ITEMTRAITTYPE", traitType, "Unknown"),
         },
-        set = setSucceeded and {
+        set = {
             hasSet = hasSet == true,
             id = setId,
             name = Util.CleanName(setName),
-        } or {
-            hasSet = false,
         },
-        enchantment = enchantSucceeded and {
+        enchantment = enchantHeader and enchantHeader ~= "" and {
             name = Util.CleanName(enchantHeader or enchantDescription),
         } or nil,
     }
@@ -86,13 +69,10 @@ end
 
 function Collector.Collect()
     local result = { items = {} }
-    for _, slotDefinition in ipairs(EQUIPMENT_SLOTS) do
-        local slotId = _G[slotDefinition.constantName]
-        if slotId ~= nil then
-            local item = collectItem(slotId, slotDefinition.label)
-            if item then
-                table.insert(result.items, item)
-            end
+    for _, slot in ipairs(EQUIPMENT_SLOTS) do
+        local item = collectItem(slot[1], slot[2])
+        if item then
+            table.insert(result.items, item)
         end
     end
     return result

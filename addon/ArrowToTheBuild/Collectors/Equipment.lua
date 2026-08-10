@@ -54,7 +54,7 @@ local function collectItem(slotId, slotLabel)
         weaponTypeName = weaponType and weaponType > 0 and Util.EnumName("SI_WEAPONTYPE", weaponType, "Unknown") or "None",
         trait = {
             id = traitType,
-            name = Util.EnumName("SI_ITEMTRAITTYPE", traitType, "Unknown"),
+            name = traitType and traitType > 0 and Util.EnumName("SI_ITEMTRAITTYPE", traitType, "Unknown") or "",
         },
         set = {
             hasSet = hasSet == true,
